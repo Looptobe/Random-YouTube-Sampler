@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <title>Looptobes RANDOM YouTube Sampler (Version 31)</title>
+    <script src="https://www.youtube.com/iframe_api"></script>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; background: #121212; color: white; text-align: center; }
+        #player { margin: 20px auto; display: flex; justify-content: center; }
+        input[type="text"] { width: 60%; padding: 8px; }
+        button { padding: 8px; }
+        .info { margin-top: 20px; display: flex; justify-content: space-around; flex-wrap: wrap; gap: 30px; }
+        .keyboard-group { min-width: 220px; text-align: left; }
+        .keyboard-group strong { letter-spacing: 1px; }
+        .status { font-size: 1.1em; color: #0f0; margin-top: 6px; }
+        .active { color: #0f0; font-weight: bold; }
+        #chopDisplay { margin-top: 20px; }
+        #chopDisplay span { display: inline-block; width: 30px; font-size: 1.2em; }
+        #loopControls { display: grid; grid-template-columns: 1fr 1fr; column-gap: 20px; }
+        .flash { color: #0f0 !important; transition: color 0.3s; }
+        /* BuyMeACoffee mittlere Größe */
+        #bmc-medium { display: inline-block; margin-top: 10px; }
+        #bmc-medium script, #bmc-medium iframe, #bmc-medium .bmc-btn-container,
+        #bmc-medium .bmc-btn, #bmc-medium .bmc-btn-text {
+            transform: scale(0.8);
+            transform-origin: left top;
+        }
+    </style>
+</head>
+<body>
+    <h2>Looptobes RANDOM YouTube Sampler (Version 31)</h2>
+    <input type="text" id="videoUrl" placeholder="YouTube URL here">
+    <button onclick="loadVideo()">Load Video</button>
+
+    <div id="player"></div>
+    <div id="chopDisplay"></div>
+
+    <div class="info">
+        <div class="keyboard-group">
+            <strong>Playback SPEED</strong><br>
+            <div id="speedControls">
+                <span id="speed-a"><code>A</code>: 0.25×</span><br>
+                <span id="speed-s"><code>S</code>: 0.5×</span><br>
+                <span id="speed-d"><code>D</code>: 1.0× (normal)</span><br>
+                <span id="speed-f"><code>F</code>: 1.5×</span><br>
+                <span id="speed-g"><code>G</code>: 2.0×</span><br>
+            </div>
+        </div>
+        <div class="keyboard-group">
+            <strong>Adjust SAMPLESTART</strong><br>
+            <span id="jump-v"><code>V</code>: -1.0s</span><br>
+            <span id="jump-b"><code>B</code>: -0.5s</span><br>
+            <span id="jump-n"><code>N</code>: +0.5s</span><br>
+            <span id="jump-m"><code>M</code>: +1.0s</span><br>
+        </div>
+        <div class="keyboard-group">
+            <strong>Loop LENGHT</strong><br>
+            <div id="loopControls">
+                <span id="loop-q"><code>Q</code>: 0.05s</span>
+                <span id="loop-w"><code>W</code>: 0.2s</span>
+                <span id="loop-e"><code>E</code>: 0.4s</span>
+                <span id="loop-r"><code>R</code>: 0.6s</span>
+                <span id="loop-t"><code>T</code>: 0.8s</span>
+                <span id="loop-z"><code>Z</code>: 1.0s</span>
+                <span id="loop-u"><code>U</code>: 1.5s</span>
+                <span id="loop-i"><code>I</code>: 2.0s</span>
+                <span id="loop-o"><code>O</code>: 3.0s</span>
+                <span id="loop-p"><code>P</code>: 4.0s</span>
+            </div>
+        </div>
+        <div class="keyboard-group">
+            <strong>Loop CONTROL</strong><br>
+            <span id="loop-l"><code>L</code>: START LOOP MODE</span><br>
+            <span id="loop-k"><code>K</code>: NO LOOP MODE</span><br>
+        </div>
+        <div class="keyboard-group">
+            <strong>Sampling CONTROLS</strong><br>
+            <span id="sample-c"><code>C</code>: Randomize current sample</span><br>
+            <span id="sample-x"><code>X</code>: Randomize all samples</span><br>
+            <span id="sample-trigger"><code>1</code>–<code>9</code>: Trigger SAMPLE</span><br>
+            <span id="sample-full"><code>F11</code>: Full SCREEN</span><br>
+            <div id="bmc-medium">
+                <!-- BuyMeACoffee Button mittlere Größe -->
+                <script type="text/javascript" src="https://cdnjs.buymeacoffee.com/1.0.0/button.prod.min.js" data-name="bmc-button" data-slug="Looptobe" data-color="#FFDD00" data-emoji="☕"  data-font="Cookie" data-text="Buy me a coffee" data-outline-color="#000000" data-font-color="#000000" data-coffee-color="#ffffff"></script>
+            </div>
+        </div>
+    </div>
+
+<script>
+let player;
+let looping = false;
+let loopInterval;
+let loopDuration = 1.0;
+let loopStartTime = 0;
+let playbackRate = 1.0;
+let chopTimes = new Array(9).fill(null);
+let lastIndex = -1;
+const loopKeys = {'q':0.05,'w':0.2,'e':0.4,'r':0.6,'t':0.8,'z':1.0,'u':1.5,'i':2.0,'o':3.0,'p':4.0};
+
+function updateUI() {
+    document.querySelectorAll('#loopControls span').forEach(el => el.classList.remove('active'));
+    for (const [key, value] of Object.entries(loopKeys)) {
+        if (value === loopDuration) {
+            document.getElementById(`loop-${key}`).classList.add('active');
+        }
+    }
+    document.querySelectorAll('#speedControls span').forEach(el => el.classList.remove('active'));
+    const rateKeyMap = {"1.00": "d", "0.50": "s", "0.25": "a", "1.50": "f", "2.00": "g"};
+    const rateKey = rateKeyMap[playbackRate.toFixed(2)];
+    if (rateKey) {
+        document.getElementById(`speed-${rateKey}`).classList.add('active');
+    }
+    document.getElementById('loop-l').classList.toggle('active', looping);
+    document.getElementById('loop-k').classList.toggle('active', !looping);
+
+    const chopDisplay = document.getElementById("chopDisplay");
+    chopDisplay.innerHTML = "";
+    for (let i = 1; i <= 9; i++) {
+        const span = document.createElement("span");
+        span.textContent = i;
+        if (i - 1 === lastIndex) {
+            span.className = "active";
+        }
+        chopDisplay.appendChild(span);
+    }
+}
+
+function flashJumpKey(keyId) {
+    const el = document.getElementById(keyId);
+    if (el) {
+        el.classList.add('flash');
+        setTimeout(() => el.classList.remove('flash'), 500);
+    }
+}
+
+function onYouTubeIframeAPIReady() {
+    player = new YT.Player('player', {
+        height: '390',
+        width: '640',
+        videoId: 'dQw4w9WgXcQ'
+    });
+}
+
+function loadVideo() {
+    const url = document.getElementById('videoUrl').value;
+    const videoIdMatch = url.match(/[?&]v=([^&]+)/);
+    if (videoIdMatch && videoIdMatch[1]) {
+        player.loadVideoById(videoIdMatch[1]);
+    } else {
+        alert('Invalid URL');
+    }
+}
+
+function jumpToIndex(i) {
+    lastIndex = i;
+    const dur = player.getDuration();
+    if (chopTimes[i] === null) {
+        chopTimes[i] = Math.random() * dur;
+    }
+    if (chopTimes[i] !== null) {
+        player.seekTo(chopTimes[i], true);
+        loopStartTime = chopTimes[i];
+    }
+    updateUI();
+}
+
+function resetChops() {
+    const dur = player.getDuration();
+    for (let i = 0; i < 9; i++) {
+        chopTimes[i] = Math.random() * dur;
+    }
+    updateUI();
+}
+
+function randomizeCurrentChop() {
+    if (lastIndex >= 0) {
+        const dur = player.getDuration();
+        chopTimes[lastIndex] = Math.random() * dur;
+        player.seekTo(chopTimes[lastIndex], true);
+        loopStartTime = chopTimes[lastIndex];
+        updateUI();
+    }
+}
+
+function startLoop() {
+    looping = true;
+    loopStartTime = player.getCurrentTime();
+    clearInterval(loopInterval);
+    loopInterval = setInterval(() => {
+        if (player.getCurrentTime() >= loopStartTime + loopDuration) {
+            player.seekTo(loopStartTime, true);
+        }
+    }, 50);
+    updateUI();
+}
+
+function stopLoop() {
+    looping = false;
+    clearInterval(loopInterval);
+    updateUI();
+}
+
+function adjustChopTime(delta, keyId) {
+    if (lastIndex >= 0 && chopTimes[lastIndex] !== null) {
+        const dur = player.getDuration();
+        chopTimes[lastIndex] = Math.min(Math.max(0, chopTimes[lastIndex] + delta), dur);
+        loopStartTime = chopTimes[lastIndex];
+        player.seekTo(loopStartTime, true);
+        flashJumpKey(keyId);
+    }
+}
+
+document.addEventListener('keydown', (e) => {
+    if (!player || player.getPlayerState() !== 1) return;
+    const key = e.key.toLowerCase();
+    if (key >= '1' && key <= '9') jumpToIndex(parseInt(key) - 1);
+    if (key === 'c') randomizeCurrentChop();
+    if (key === 'x') resetChops();
+    if (key === 'v') adjustChopTime(-1.0, 'jump-v');
+    if (key === 'b') adjustChopTime(-0.5, 'jump-b');
+    if (key === 'n') adjustChopTime(0.5, 'jump-n');
+    if (key === 'm') adjustChopTime(1.0, 'jump-m');
+    if (key in loopKeys) loopDuration = loopKeys[key];
+    if (key === 'l') startLoop();
+    if (key === 'k') stopLoop();
+    if (key === 'd') playbackRate = 1.0;
+    if (key === 's') playbackRate = 0.5;
+    if (key === 'a') playbackRate = 0.25;
+    if (key === 'f') playbackRate = 1.5;
+    if (key === 'g') playbackRate = 2.0;
+    if (["d","s","a","f","g"].includes(key)) player.setPlaybackRate(playbackRate);
+    updateUI();
+});
+
+updateUI();
+</script>
+</body>
+</html>
